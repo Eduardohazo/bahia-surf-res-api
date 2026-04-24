@@ -41,8 +41,6 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
-// 👇 THIS LINE IS IMPORTANT
-app.options("*", cors());
 app.use(express.json());
 
 // Routes
