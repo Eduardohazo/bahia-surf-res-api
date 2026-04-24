@@ -22,13 +22,27 @@ const swaggerDocument = YAML.load(path.join(process.cwd(), './docs/openapi.yaml'
 // Port
 const PORT = process.env.PORT || 3000;
 
+const allowedOrigins = [
+  "https://bahiasurf.netlify.app"
+];
+
 // Middelwares
-// On local
-// app.use(cors());
-// On live
 app.use(cors({
-  origin: "https://bahiasurf.netlify.app"
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
+// 👇 THIS LINE IS IMPORTANT
+app.options("*", cors());
 app.use(express.json());
 
 // Routes
