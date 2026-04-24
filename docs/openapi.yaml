@@ -1,0 +1,544 @@
+openapi: 3.1.0
+info:
+  title: Ember REST API
+  description: >
+    API completa para e-commerce Ember.
+    Gestiona productos, órdenes y pagos con PayPal (sandbox y live).
+    Incluye limpieza automática de órdenes expiradas y validación con Zod.
+  version: 1.0.0
+
+tags:
+  - name: Products
+    description: Gestión del catálogo de productos.
+  - name: Orders
+    description: Gestión del ciclo de vida de las órdenes.
+  - name: Payments
+    description: Integración con PayPal (creación de intención y captura de fondos).
+
+paths:
+
+  # ─────────────────────────────────────────
+  # PRODUCTS
+  # ─────────────────────────────────────────
+
+  /api/product/get-all-products:
+    get:
+      tags: [Products]
+      summary: Obtener todos los productos
+      description: >
+        Retorna todos los productos del catálogo desde MongoDB.
+        Si la base de datos está vacía, retorna un arreglo vacío con status EMPTY.
+        Valida la integridad de los datos con Zod antes de retornarlos.
+      responses:
+        '200':
+          description: Productos obtenidos con éxito (puede ser lista vacía).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              examples:
+                con_productos:
+                  summary: Catálogo con productos
+                  value:
+                    status: SUCCESS
+                    message: Products retrieved successfully
+                    data:
+                      - id_product: "PROD-001"
+                        name: "Producto A"
+                        price: 199.99
+                        stock_total: 50
+                        stock_reserved: 5
+                sin_productos:
+                  summary: Catálogo vacío
+                  value:
+                    status: EMPTY
+                    message: No products found in the catalog
+                    data: []
+        '500':
+          description: Los registros de la DB no coinciden con el schema esperado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: INTERNAL_SERVER_ERROR
+                message: Database records do not match the required schema.
+                data: null
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  # ─────────────────────────────────────────
+  # ORDERS
+  # ─────────────────────────────────────────
+
+  /api/order/create-order:
+    post:
+      tags: [Orders]
+      summary: Crear una nueva orden
+      description: >
+        Crea una orden nueva. Antes de ejecutar, limpia automáticamente las órdenes
+        expiradas (más de 30 minutos en estado PENDING). Valida stock disponible
+        para cada ítem y reserva el stock en productos. La orden se crea con
+        status PENDING y expira en 30 minutos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderInput' }
+            example:
+              items:
+                - productId: "PROD-001"
+                  qty: 2
+                  price: 199.99
+                - productId: "PROD-002"
+                  qty: 1
+                  price: 99.99
+      responses:
+        '201':
+          description: Orden creada exitosamente con status PENDING.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SUCCESS
+                message: Order created
+                data:
+                  id_order: "ORD-1718123456789"
+                  status: PENDING
+                  expiresAt: "2024-06-11T15:30:00.000Z"
+                  items:
+                    - productId: "PROD-001"
+                      qty: 2
+                      price: 199.99
+        '400':
+          description: Error de validación (body vacío, mal formado o fallo en Zod).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              examples:
+                input_vacio:
+                  summary: Body vacío o nulo
+                  value:
+                    status: INPUT_VALIDATION_ERROR
+                    message: The request is empty or wrong data
+                    data: null
+                zod_error:
+                  summary: Error de schema Zod
+                  value:
+                    status: VALIDATION_ERROR
+                    message: Invalid order data provided
+                    data:
+                      - field: "items"
+                        issue: "Required"
+        '404':
+          description: Producto no encontrado en el catálogo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: PRODUCT_NOT_FOUND
+                message: Product not found
+                data: null
+        '409':
+          description: Stock insuficiente para uno de los productos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: OUT_OF_STOCK
+                message: Out of stock for product PROD-001
+                data: null
+        '500': { $ref: '#/components/responses/DataCorruption' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /api/order/get-order/{id}:
+    get:
+      tags: [Orders]
+      summary: Obtener una orden por ID
+      description: >
+        Busca una orden por su ID. Acepta tanto el ObjectId de MongoDB
+        como el ID personalizado (ORD-...). Valida la integridad del
+        documento con Zod antes de retornarlo.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ObjectId de MongoDB o ID personalizado (ORD-...).
+          schema:
+            type: string
+          examples:
+            mongo_id:
+              summary: ObjectId de MongoDB
+              value: "65f1a2b3c4d5e6f7a8b9c0d1"
+            custom_id:
+              summary: ID personalizado
+              value: "ORD-1718123456789"
+      responses:
+        '201':
+          description: Orden encontrada y retornada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SUCCESS
+                message: Order identified by id ORD-1718123456789 successfully fetched
+                data:
+                  id_order: "ORD-1718123456789"
+                  status: PENDING
+                  expiresAt: "2024-06-11T15:30:00.000Z"
+                  items:
+                    - productId: "PROD-001"
+                      qty: 2
+                      price: 199.99
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Orden no encontrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: ORDER_NOT_FOUND
+                message: Order not found
+                data: null
+        '500': { $ref: '#/components/responses/DataCorruption' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /api/order/get-all-orders:
+    get:
+      tags: [Orders]
+      summary: Obtener todas las órdenes
+      description: >
+        Retorna todas las órdenes almacenadas en MongoDB.
+        Si no hay órdenes, retorna un arreglo vacío.
+        Valida la integridad de cada documento con Zod.
+      responses:
+        '201':
+          description: Órdenes obtenidas con éxito.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SUCCESS
+                message: All orders fetched successfully!
+                data:
+                  - id_order: "ORD-1718123456789"
+                    status: PAID
+                    items:
+                      - productId: "PROD-001"
+                        qty: 2
+                        price: 199.99
+        '500': { $ref: '#/components/responses/DataCorruption' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  # ─────────────────────────────────────────
+  # PAYMENTS
+  # ─────────────────────────────────────────
+
+  /api/payments/create-intent:
+    post:
+      tags: [Payments]
+      summary: Crear intención de pago en PayPal
+      description: >
+        Inicia el flujo de pago con PayPal. Obtiene la orden de MongoDB,
+        calcula el total desde la DB (no desde el cliente) para garantizar
+        integridad de precios, y genera la orden en PayPal.
+        Retorna el paypalOrderId y el approvalUrl para redirigir al usuario.
+        Funciona en modo sandbox o live según la variable PAYPAL_MODE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId:
+                  type: string
+                  description: ObjectId de MongoDB de la orden a pagar.
+                  example: "65f1a2b3c4d5e6f7a8b9c0d1"
+      responses:
+        '201':
+          description: Intención de pago creada. Redirigir al usuario a approvalUrl.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SUCCESS
+                message: Paypal Order created
+                data:
+                  paypalOrderId: "5O190435675768353"
+                  approvalUrl: "https://www.sandbox.paypal.com/checkoutnow?token=5O190435675768353"
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: La orden no existe en MongoDB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: ORDER_NOT_FOUND
+                message: Order not found
+                data: null
+        '500': { $ref: '#/components/responses/DataCorruption' }
+        '503':
+          description: PayPal o la base de datos no están disponibles.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SERVER_ERROR
+                message: PayPal infrastructure is down
+                data: null
+
+  /api/payments/capture-order:
+    post:
+      tags: [Payments]
+      summary: Capturar y confirmar pago en PayPal
+      description: >
+        Confirma el cobro en PayPal y actualiza el estado de la orden en MongoDB a PAID.
+        Este endpoint tiene dos puntos críticos:
+        1. Si PayPal falla al capturar → no se cobra y no se actualiza la DB.
+        2. Si PayPal cobra pero falla la actualización de MongoDB → error crítico 500
+           (dinero tomado pero orden sin registrar). Se recomienda implementar
+           webhooks de PayPal como red de seguridad para este caso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paypalOrderId, mongoOrderId]
+              properties:
+                paypalOrderId:
+                  type: string
+                  description: ID de la orden generado por PayPal.
+                  example: "5O190435675768353"
+                mongoOrderId:
+                  type: string
+                  description: ObjectId de MongoDB de la orden.
+                  example: "65f1a2b3c4d5e6f7a8b9c0d1"
+      responses:
+        '200':
+          description: Pago capturado y orden actualizada a PAID en MongoDB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SUCCESS
+                message: Payment successful and order updated!
+                data:
+                  id: "5O190435675768353"
+                  status: COMPLETED
+                  purchase_units:
+                    - reference_id: "ORD-1718123456789"
+        '400':
+          description: IDs faltantes o estado de PayPal no es COMPLETED.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              examples:
+                ids_faltantes:
+                  summary: Faltan IDs requeridos
+                  value:
+                    status: VALIDATION_ERROR
+                    message: Missing required IDs
+                    data: null
+                paypal_no_completado:
+                  summary: PayPal retornó estado distinto a COMPLETED
+                  value:
+                    status: ERROR
+                    message: "PayPal status: PENDING"
+                    data: null
+        '500':
+          description: >
+            Error crítico — el pago fue cobrado por PayPal pero falló
+            el registro en MongoDB. Guardar el paypalOrderId para reconciliación manual
+            o via webhook.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: DATA_CORRUPTION
+                message: Payment confirmed but record failed. Save your PayPal ID.
+                data: null
+        '502':
+          description: Fallo de comunicación con PayPal durante la captura.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              example:
+                status: SERVER_ERROR
+                message: PayPal communication failed during capture
+                data: null
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+# ─────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────
+
+components:
+  schemas:
+
+    ApiResponse:
+      type: object
+      description: Estructura estándar de respuesta usada en todos los endpoints.
+      properties:
+        status:
+          type: string
+          description: Código de estado semántico del resultado.
+          example: SUCCESS
+        message:
+          type: string
+          description: Mensaje descriptivo del resultado.
+          example: Operation completed successfully
+        data:
+          nullable: true
+          description: Payload de la respuesta. Null en caso de error.
+
+    OrderInput:
+      type: object
+      required: [items]
+      description: Body requerido para crear una orden.
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, qty, price]
+            properties:
+              productId:
+                type: string
+                description: ID del producto (id_product en MongoDB).
+                example: "PROD-001"
+              qty:
+                type: integer
+                minimum: 1
+                description: Cantidad solicitada.
+                example: 2
+              price:
+                type: number
+                description: Precio unitario del producto.
+                example: 199.99
+
+    Product:
+      type: object
+      description: Documento de producto en MongoDB.
+      properties:
+        id_product:
+          type: string
+          example: "PROD-001"
+        name:
+          type: string
+          example: "Producto A"
+        price:
+          type: number
+          example: 199.99
+        stock_total:
+          type: integer
+          example: 50
+        stock_reserved:
+          type: integer
+          example: 5
+
+    Order:
+      type: object
+      description: Documento de orden en MongoDB.
+      properties:
+        id_order:
+          type: string
+          example: "ORD-1718123456789"
+        status:
+          type: string
+          enum: [PENDING, PAID, CANCELLED]
+          example: PENDING
+        expiresAt:
+          type: string
+          format: date-time
+          description: Fecha de expiración (30 minutos desde la creación).
+          example: "2024-06-11T15:30:00.000Z"
+        paypalOrderId:
+          type: string
+          nullable: true
+          example: "5O190435675768353"
+        capturedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-06-11T15:10:00.000Z"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: string }
+              qty: { type: integer }
+              price: { type: number }
+
+  responses:
+
+    BadRequest:
+      description: Error de validación (body vacío, mal formado o fallo en Zod).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+          examples:
+            input_vacio:
+              summary: Body vacío o nulo
+              value:
+                status: INPUT_VALIDATION_ERROR
+                message: The request is empty or wrong data
+                data: null
+            zod_error:
+              summary: Error de schema Zod
+              value:
+                status: VALIDATION_ERROR
+                message: Validation error on ZOD
+                data:
+                  - field: items
+                    issue: Required
+
+    NotFound:
+      description: Recurso no encontrado.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+          examples:
+            orden_no_encontrada:
+              summary: Orden no encontrada
+              value:
+                status: ORDER_NOT_FOUND
+                message: Order not found
+                data: null
+            producto_no_encontrado:
+              summary: Producto no encontrado
+              value:
+                status: PRODUCT_NOT_FOUND
+                message: Product not found
+                data: null
+
+    Conflict:
+      description: Error de lógica de negocio (stock insuficiente).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+          example:
+            status: OUT_OF_STOCK
+            message: Out of stock for product PROD-001
+            data: null
+
+    DataCorruption:
+      description: Los datos en MongoDB no coinciden con el schema Zod esperado.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+          example:
+            status: DATA_CORRUPTION
+            message: Data inconsistency in Database
+            data: null
+
+    ServiceUnavailable:
+      description: Error de infraestructura (MongoDB caído, timeout o PayPal no disponible).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiResponse' }
+          example:
+            status: SERVER_ERROR
+            message: Environment execution on server failed
+            data: null
