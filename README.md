@@ -110,3 +110,8 @@ Registra un nuevo producto en el sistema.
   "stock": "number"
 }
 ```
+
+## How to enable for production
+
+-  Comment and uncomment some lines of code on files api.js / createPaypalOrderService.js  (search for an astherisc * to locate them)
+
