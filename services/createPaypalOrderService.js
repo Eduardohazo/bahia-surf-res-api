@@ -34,11 +34,11 @@ export const createPaypalOrderService = async (data) => {
   const total = order.items.reduce((sum, item) => sum + Number(item.price), 0);
 
   // ON PRODUCTION 
-  // const cancelProductionUrl = `https://bahiasurf.netlify.app/paymentCancel?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
-  // const returnProductionUrl = `https://bahiasurf.netlify.app/paymentSuccess?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
+  const cancelProductionUrl = `https://bahiasurf.netlify.app/paymentCancel?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
+  const returnProductionUrl = `https://bahiasurf.netlify.app/paymentSuccess?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
   // ON DEVELOPMENT 
-  const cancelUrl = `http://localhost:5173/paymentCancel?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
-  const returnUrl = `http://localhost:5173/paymentSuccess?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
+  // const cancelUrl = `http://localhost:5173/paymentCancel?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
+  // const returnUrl = `http://localhost:5173/paymentSuccess?orderId=${encodeURIComponent(order._id)}&customOrderId=${encodeURIComponent(order.id_order)}`; // *
 
   // Paypal object rquired to create Paypal order
   const orderPayload = {
@@ -59,10 +59,14 @@ export const createPaypalOrderService = async (data) => {
       user_action: "PAY_NOW",
       shipping_preference: "NO_SHIPPING",
       // Pass the DB _id to the return URL so your success page can find it
-      // return_url: returnProductionUrl, // URL protegida // *
-      // cancel_url: cancelProductionUrl, // URL protegida // *
-      return_url: returnUrl, // URL protegida  // *
-      cancel_url: cancelUrl, // URL protegida // *
+
+      // ON PRODUCTION
+      return_url: returnProductionUrl, // URL protegida // *
+      cancel_url: cancelProductionUrl, // URL protegida // *
+      // ON DEVELOPMENT
+      // return_url: returnUrl, // URL protegida  // *
+      // cancel_url: cancelUrl, // URL protegida // *
+
     },
   };
 

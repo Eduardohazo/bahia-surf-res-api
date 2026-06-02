@@ -23,26 +23,27 @@ const swaggerDocument = YAML.load(path.join(process.cwd(), './docs/openapi.yaml'
 const PORT = process.env.PORT || 3000;
 
 const allowedOrigins = [
-  "https://bahiasurf.netlify.app"
+  "https://bahiasurf.netlify.app",
+  "https://bahiasurfschool.mx"
 ];
 
 // Middelwares
 
-// app.use(cors({
-//   origin: function (origin, callback) {
-//     if (!origin) return callback(null, true);
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
 
-//     if (allowedOrigins.includes(origin)) {
-//       return callback(null, true);
-//     } else {
-//       return callback(new Error("Not allowed by CORS"));
-//     }
-//   },
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization"],
-// })); // * for production
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+})); // * for production
 
-app.use(cors()); // * for development
+// app.use(cors()); // * for development
 
 app.use(express.json());
 

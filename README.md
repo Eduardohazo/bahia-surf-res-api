@@ -113,5 +113,5 @@ Registra un nuevo producto en el sistema.
 
 ## How to enable for production
 
--  Comment and uncomment some lines of code on files api.js / createPaypalOrderService.js  (search for an astherisc * to locate them)
+-  Comment and uncomment some lines of code on files app.js / createPaypalOrderService.js  (search for an astherisc * to locate them)
 
